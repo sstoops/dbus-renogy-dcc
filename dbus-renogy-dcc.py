@@ -23,9 +23,8 @@ sys.path.insert(1, "/opt/victronenergy/dbus-modem")
 from vedbus import VeDbusService
 
 # Init logging
-logging.basicConfig(level=logging.INFO)
-
-dbusservice = {}  # Dictionary to hold the multiple services
+logger = logging.getLogger("dbus-renogy-dcc")
+logger.setLevel(logging.INFO)
 
 
 class SystemBus(dbus.bus.BusConnection):
@@ -111,7 +110,7 @@ class Device:
                 self.device_connected = True
                 self.dbus["/Connected"] = 1
         except:
-            logging.error("Device unresponsive. Retrying")
+            logger.error("Device unresponsive. Retrying")
             self.device_response_error_count += 1
             # If we hit our error limit, then set the device to disconnected
             if self.device_connected and self.device_response_error_count >= 6:
@@ -119,7 +118,7 @@ class Device:
                 self.dbus["/Connected"] = 0
             return True
 
-        logging.info(f"Device data: {pformat(data)}")
+        logger.info(f"Device data: {pformat(data)}")
 
         self.dbus["/ProductName"] = data["product_model"]
         self.dbus["/HardwareVersion"] = data["product_hardware_version"]
@@ -167,7 +166,7 @@ class Device:
 
 
 def main() -> None:
-    logging.info(__file__ + " is starting up")
+    logger.info(__file__ + " is starting up")
 
     # Setup the dbus main loop
     DBusGMainLoop(set_as_default=True)
@@ -183,7 +182,7 @@ def main() -> None:
 
     # Run the main loop
     mainloop = GLib.MainLoop()
-    logging.info("Connected to dbus, and switching over to GLib.MainLoop().")
+    logger.info("Connected to dbus, and switching over to GLib.MainLoop().")
     mainloop.run()
 
 
