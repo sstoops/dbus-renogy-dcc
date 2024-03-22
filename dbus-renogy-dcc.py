@@ -18,36 +18,28 @@ from gi.repository import GLib
 
 import renogy
 
-# our own packages
-sys.path.insert(1, "/opt/victronenergy/dbus-modem")
+# Victron packages
+sys.path.insert(1, os.path.join(os.path.dirname(__file__), "./ext/velib_python"))
+
 from vedbus import VeDbusService
+from ve_utils import exit_on_error
 
 # Init logging
 logger = logging.getLogger("dbus-renogy-dcc")
 logger.setLevel(logging.INFO)
 
 
-class SystemBus(dbus.bus.BusConnection):
-    def __new__(cls):
-        return dbus.bus.BusConnection.__new__(cls, dbus.bus.BusConnection.TYPE_SYSTEM)
-
-
-class SessionBus(dbus.bus.BusConnection):
-    def __new__(cls):
-        return dbus.bus.BusConnection.__new__(cls, dbus.bus.BusConnection.TYPE_SESSION)
-
-
-def dbusconnection():
-    return SessionBus() if "DBUS_SESSION_BUS_ADDRESS" in os.environ else SystemBus()
-
-
 class Device:
 
     device_connected = False
-    device_response_error_count = 0
 
     def __init__(self, connection: str, slave_address: int, device_instance: int = 0):
-        self.dbus = VeDbusService("com.victronenergy.solarcharger", dbusconnection())
+        self._bus = (
+            dbus.SessionBus()
+            if "DBUS_SESSION_BUS_ADDRESS" in os.environ
+            else dbus.SystemBus()
+        )
+        self.dbus = VeDbusService("com.victronenergy.solarcharger", self._bus)
         self.connection = connection
         self.slave_address = slave_address
 
@@ -104,19 +96,14 @@ class Device:
                 port=self.connection,
                 slaveaddress=self.slave_address,
             ).all()
-            self.device_response_error_count = 0
             # If the device was previously not connected, then set it to connected
             if not self.device_connected:
                 self.device_connected = True
                 self.dbus["/Connected"] = 1
         except:
-            logger.error("Device unresponsive. Retrying")
-            self.device_response_error_count += 1
-            # If we hit our error limit, then set the device to disconnected
-            if self.device_connected and self.device_response_error_count >= 6:
-                self.device_connected = False
-                self.dbus["/Connected"] = 0
-            return True
+            logger.error("Device unresponsive.")
+            self.dbus["/Connected"] = 0
+            raise
 
         logger.info(f"Device data: {pformat(data)}")
 
@@ -159,8 +146,8 @@ class Device:
         elif data["charge_state"]["equalization"]:
             self.dbus["/State"] = 7
 
-        self.dbus["/Yield/User"] = f"{data['power_daily']}wh"
-        self.dbus["/Yield/System"] = f"{data['power_total'] / 1000:.1f}kwh"
+        self.dbus["/Yield/User"] = round(data["power_daily"] / 1000, 3)
+        self.dbus["/Yield/System"] = round(data["power_total"] / 1000, 2)
 
         return True
 
@@ -178,7 +165,7 @@ def main() -> None:
     device.update()
 
     # Setup periodic updates
-    GLib.timeout_add(5000, device.update)
+    GLib.timeout_add(5000, exit_on_error, device.update)
 
     # Run the main loop
     mainloop = GLib.MainLoop()
