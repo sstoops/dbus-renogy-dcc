@@ -28,10 +28,14 @@ from ve_utils import exit_on_error
 logger = logging.getLogger("dbus-renogy-dcc")
 logger.setLevel(logging.INFO)
 
+GLIB_INTERVAL = 5000
+DEVICE_RETRIES = 5
+
 
 class Device:
 
     device_connected = False
+    device_response_error_count = 0
 
     def __init__(self, connection: str, slave_address: int, device_instance: int = 0):
         self._bus = (
@@ -39,7 +43,7 @@ class Device:
             if "DBUS_SESSION_BUS_ADDRESS" in os.environ
             else dbus.SystemBus()
         )
-        self.dbus = VeDbusService("com.victronenergy.solarcharger", self._bus)
+        self.dbus = VeDbusService(f"com.victronenergy.solarcharger.{connection.split('/')[-1]}", self._bus)
         self.connection = connection
         self.slave_address = slave_address
 
@@ -96,14 +100,20 @@ class Device:
                 port=self.connection,
                 slaveaddress=self.slave_address,
             ).all()
+            self.device_response_error_count = 0
             # If the device was previously not connected, then set it to connected
             if not self.device_connected:
                 self.device_connected = True
                 self.dbus["/Connected"] = 1
         except:
-            logger.error("Device unresponsive.")
-            self.dbus["/Connected"] = 0
-            raise
+            logger.exception("Device unresponsive. Retrying")
+            self.device_response_error_count += 1
+            # If we hit our error limit, then set the device to disconnected
+            if self.device_connected and self.device_response_error_count > DEVICE_RETRIES:
+                self.device_connected = False
+                self.dbus["/Connected"] = 0
+                raise
+            return True
 
         logger.info(f"Device data: {pformat(data)}")
 
@@ -155,17 +165,24 @@ class Device:
 def main() -> None:
     logger.info(__file__ + " is starting up")
 
+    # Get the first argument as the connection
+    if len(sys.argv) < 2:
+        logger.error("No connection provided. Exiting.")
+        sys.exit(1)
+    
+    connection = sys.argv[1]
+
     # Setup the dbus main loop
     DBusGMainLoop(set_as_default=True)
 
     # Create the device
-    device = Device(connection="/dev/ttyUSB0", slave_address=96)
+    device = Device(connection=connection, slave_address=96)
 
     # Do a first update so that all the readings appear.
     device.update()
 
     # Setup periodic updates
-    GLib.timeout_add(5000, exit_on_error, device.update)
+    GLib.timeout_add(GLIB_INTERVAL, exit_on_error, device.update)
 
     # Run the main loop
     mainloop = GLib.MainLoop()

@@ -12,7 +12,7 @@ class Device(minimalmodbus.Instrument):
         self.serial.baudrate = 9600
         self.serial.bytesize = 8
         self.serial.parity = minimalmodbus.serial.PARITY_NONE
-        self.serial.stopbits = 2
+        self.serial.stopbits = 1
         self.serial.timeout = 1
 
     RATED_VOLTAGE_CURRENT = 0xA
