@@ -9,4 +9,4 @@ It was unclear to me how to best represent the Solar and the Alternator sides of
 
 ## Installation
 
-Still a work in progress, but for now, on this repo to `/data/dbus-renogy-dcc` on your device, then run `/data/dbus-renogy-dcc/install.sh`.
+Still a work in progress, but for now, copy this repo to `/data/etc/dbus-renogy-dcc` on your device, then run `/data/etc/dbus-renogy-dcc/install.sh`.
